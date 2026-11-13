@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+backend/instance/
+.venv/
+.env
+mobile/.gradle/
+mobile/build/
+mobile/app/build/
+mobile/local.properties
+.idea/
+*.apk

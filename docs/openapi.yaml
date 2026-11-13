@@ -1,0 +1,207 @@
+openapi: 3.0.3
+info:
+  title: Smart Inventory & Order Management API
+  version: 1.0.0
+  description: |
+    REST API for the web and Android clients. Sign in with `POST /api/auth/login`, then send
+    `Authorization: Bearer <token>` on every request. Roles: **staff** < **manager** < **admin**.
+    Errors always look like `{"error": {"code", "message", "details?"}}`.
+servers:
+  - url: /
+security:
+  - bearer: []
+tags:
+  - {name: Auth}
+  - {name: Users}
+  - {name: Products}
+  - {name: Inventory}
+  - {name: Customers}
+  - {name: Orders}
+  - {name: Dashboard & Reports}
+paths:
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Sign in and receive a token
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/Login'}}}
+      responses:
+        '200': {description: Token and user profile}
+        '401': {$ref: '#/components/responses/Error'}
+        '429': {$ref: '#/components/responses/Error'}
+  /api/auth/logout:
+    post: {tags: [Auth], summary: Revoke the current token, responses: {'200': {description: Signed out}}}
+  /api/auth/me:
+    get: {tags: [Auth], summary: Current user, responses: {'200': {description: User}}}
+  /api/users:
+    get: {tags: [Users], summary: List users (admin), responses: {'200': {description: Page of users}}}
+    post:
+      tags: [Users]
+      summary: Create a user (admin)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/NewUser'}}}}
+      responses: {'201': {description: Created}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /api/users/{id}:
+    patch:
+      tags: [Users]
+      summary: Change role or enable/disable a user (admin)
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {role: {type: string, enum: [admin, manager, staff]}, active: {type: boolean}}}}}}
+      responses: {'200': {description: Updated}}
+  /api/categories:
+    get: {tags: [Products], summary: List categories, responses: {'200': {description: Categories}}}
+    post: {tags: [Products], summary: Create category (manager+), responses: {'201': {description: Created}}}
+  /api/products:
+    get:
+      tags: [Products]
+      summary: Search and list products
+      parameters:
+        - {name: q, in: query, schema: {type: string}, description: Matches name or SKU}
+        - {name: category_id, in: query, schema: {type: integer}}
+        - {name: low_stock, in: query, schema: {type: boolean}}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses: {'200': {description: Page of products}}
+    post:
+      tags: [Products]
+      summary: Add a product (manager+). `stock_qty` sets opening stock.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProductInput'}}}}
+      responses: {'201': {description: Created}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /api/products/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get: {tags: [Products], summary: Get a product, responses: {'200': {description: Product}, '404': {$ref: '#/components/responses/Error'}}}
+    put:
+      tags: [Products]
+      summary: Edit a product (manager+). Stock is changed only via /api/inventory.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProductInput'}}}}
+      responses: {'200': {description: Updated}}
+    delete: {tags: [Products], summary: Delete a product (manager+; history is kept), responses: {'204': {description: Deleted}}}
+  /api/inventory/stock-in:
+    post:
+      tags: [Inventory]
+      summary: Receive stock (manager+)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Movement'}}}}
+      responses: {'200': {description: Updated product}}
+  /api/inventory/stock-out:
+    post:
+      tags: [Inventory]
+      summary: Remove stock (manager+). Returns 409 `insufficient_stock` if it would go below zero.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Movement'}}}}
+      responses: {'200': {description: Updated product}, '409': {$ref: '#/components/responses/Error'}}
+  /api/inventory/movements:
+    get:
+      tags: [Inventory]
+      summary: Stock movement history
+      parameters: [{name: product_id, in: query, schema: {type: integer}}, {name: type, in: query, schema: {type: string, enum: [IN, OUT]}}, {$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Limit'}]
+      responses: {'200': {description: Page of movements}}
+  /api/inventory/low-stock:
+    get: {tags: [Inventory], summary: Products at or below their reorder level, responses: {'200': {description: Low-stock products}}}
+  /api/customers:
+    get:
+      tags: [Customers]
+      summary: List or search customers
+      parameters: [{name: q, in: query, schema: {type: string}}, {$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Limit'}]
+      responses: {'200': {description: Page of customers}}
+    post:
+      tags: [Customers]
+      summary: Add a customer
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Customer'}}}}
+      responses: {'201': {description: Created}}
+  /api/customers/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get: {tags: [Customers], summary: Get a customer, responses: {'200': {description: Customer}}}
+    put:
+      tags: [Customers]
+      summary: Update a customer
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Customer'}}}}
+      responses: {'200': {description: Updated}}
+    delete: {tags: [Customers], summary: Delete a customer (manager+; blocked if they have orders), responses: {'204': {description: Deleted}, '409': {$ref: '#/components/responses/Error'}}}
+  /api/orders:
+    get:
+      tags: [Orders]
+      summary: List orders
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [completed, cancelled]}}
+        - {name: customer_id, in: query, schema: {type: integer}}
+        - {name: from, in: query, schema: {type: string, format: date}}
+        - {name: to, in: query, schema: {type: string, format: date}}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses: {'200': {description: Page of orders}}
+    post:
+      tags: [Orders]
+      summary: Create an order. Stock is deducted atomically; if any line lacks stock nothing changes (409).
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/NewOrder'}}}}
+      responses: {'201': {description: Order with items}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /api/orders/{id}:
+    get: {tags: [Orders], summary: Order with line items, parameters: [{$ref: '#/components/parameters/Id'}], responses: {'200': {description: Order}}}
+  /api/orders/{id}/cancel:
+    post: {tags: [Orders], summary: Cancel an order and return its stock (manager+), parameters: [{$ref: '#/components/parameters/Id'}], responses: {'200': {description: Cancelled order}}}
+  /api/dashboard:
+    get: {tags: [Dashboard & Reports], summary: Summary of products, stock, orders and sales, responses: {'200': {description: Dashboard data}}}
+  /api/reports/sales:
+    get:
+      tags: [Dashboard & Reports]
+      summary: Sales by day or month (manager+)
+      parameters: [{name: from, in: query, schema: {type: string, format: date}}, {name: to, in: query, schema: {type: string, format: date}}, {name: group, in: query, schema: {type: string, enum: [day, month]}}, {name: format, in: query, schema: {type: string, enum: [json, csv]}}]
+      responses: {'200': {description: Report}}
+  /api/reports/top-products:
+    get:
+      tags: [Dashboard & Reports]
+      summary: Ten best-selling products in a date range (manager+)
+      parameters: [{name: from, in: query, schema: {type: string, format: date}}, {name: to, in: query, schema: {type: string, format: date}}]
+      responses: {'200': {description: Report}}
+  /api/reports/inventory:
+    get:
+      tags: [Dashboard & Reports]
+      summary: Current stock and value per product (manager+)
+      parameters: [{name: format, in: query, schema: {type: string, enum: [json, csv]}}]
+      responses: {'200': {description: Report}}
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer, bearerFormat: JWT}
+  parameters:
+    Id: {name: id, in: path, required: true, schema: {type: integer}}
+    Page: {name: page, in: query, schema: {type: integer, default: 1}}
+    Limit: {name: limit, in: query, schema: {type: integer, default: 25, maximum: 200}}
+  responses:
+    Error:
+      description: Error
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties: {code: {type: string}, message: {type: string}, details: {type: object}}
+    Login:
+      type: object
+      required: [email, password]
+      properties: {email: {type: string, example: admin@example.com}, password: {type: string, example: Admin@123}}
+    NewUser:
+      type: object
+      required: [name, email, password, role]
+      properties: {name: {type: string}, email: {type: string}, password: {type: string, minLength: 8}, role: {type: string, enum: [admin, manager, staff]}}
+    ProductInput:
+      type: object
+      required: [sku, name, price]
+      properties: {sku: {type: string}, name: {type: string}, category_id: {type: integer}, price: {type: number, minimum: 0}, stock_qty: {type: integer, minimum: 0}, reorder_level: {type: integer, minimum: 0, default: 10}}
+    Movement:
+      type: object
+      required: [product_id, quantity]
+      properties: {product_id: {type: integer}, quantity: {type: integer, minimum: 1}, reason: {type: string}}
+    Customer:
+      type: object
+      required: [name]
+      properties: {name: {type: string}, email: {type: string}, phone: {type: string}, address: {type: string}}
+    NewOrder:
+      type: object
+      required: [customer_id, items]
+      properties:
+        customer_id: {type: integer}
+        notes: {type: string}
+        items:
+          type: array
+          items: {type: object, required: [product_id, quantity], properties: {product_id: {type: integer}, quantity: {type: integer, minimum: 1}}}
