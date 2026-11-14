@@ -26,7 +26,12 @@ function setSession(token, user) {
 
 /* ---------- API ---------- */
 
-  if (body) headers["Content-Type"] = "application/json";
+/* ---------- API ---------- */
+
+async function request(path, { method = "GET", body } = {}) {
+    const headers = {};
+
+    if (body) headers["Content-Type"] = "application/json";
     if (state.token) headers.Authorization = "Bearer " + state.token;
 
     const res = await fetch(API_BASE + "/api" + path, {
@@ -42,7 +47,36 @@ function setSession(token, user) {
     }
 
     return res;
+}
 
+async function api(path, opts) {
+    const res = await request(path, opts);
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+        const error = new Error(data.message || data.error || "Request failed");
+        error.details = data.details || {};
+        throw error;
+    }
+
+    return data;
+}
+
+async function download(path, filename) {
+    const res = await request(path);
+
+    if (!res.ok) {
+        throw new Error("Download failed");
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
 
 /* ---------- UI helpers ---------- */
 function toast(message, type = "info") {
