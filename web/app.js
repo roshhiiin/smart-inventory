@@ -1,6 +1,5 @@
 "use strict";
-/* Stockroom web client: vanilla JS, talks to the REST API under /api */
-
+const API_BASE = "https://smart-inventory-backend-q2ce.onrender.com";
 const CURRENCY = "USD";
 const money = (n) => new Intl.NumberFormat(undefined, { style: "currency", currency: CURRENCY }).format(n || 0);
 const num = (n) => new Intl.NumberFormat().format(n || 0);
@@ -26,35 +25,24 @@ function setSession(token, user) {
 }
 
 /* ---------- API ---------- */
-async function request(path, { method = "GET", body } = {}) {
-  const headers = {};
+
   if (body) headers["Content-Type"] = "application/json";
-  if (state.token) headers.Authorization = "Bearer " + state.token;
-  const res = await fetch("/api" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  if (res.status === 401 && state.token && !path.startsWith("/auth/login")) {
-    setSession(null, null); route();
-    throw new Error("Your session has ended. Please sign in again.");
-  }
-  return res;
-}
-async function api(path, opts) {
-  const res = await request(path, opts);
-  if (res.status === 204) return null;
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const e = new Error(data.error?.message || "Request failed");
-    e.details = data.error?.details; e.status = res.status;
-    throw e;
-  }
-  return data;
-}
-async function download(path, filename) {
-  const res = await request(path);
-  if (!res.ok) throw new Error("Could not download the report");
-  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(await res.blob()), download: filename });
-  a.click(); URL.revokeObjectURL(a.href);
-}
-const qs = (obj) => new URLSearchParams(Object.entries(obj).filter(([, v]) => v !== "" && v != null && v !== false)).toString();
+    if (state.token) headers.Authorization = "Bearer " + state.token;
+
+    const res = await fetch(API_BASE + "/api" + path, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined
+    });
+
+    if (res.status === 401 && state.token && !path.startsWith("/auth/login")) {
+        setSession(null, null);
+        route();
+        throw new Error("Your session has ended. Please sign in again.");
+    }
+
+    return res;
+
 
 /* ---------- UI helpers ---------- */
 function toast(message, type = "info") {
